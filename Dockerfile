@@ -20,11 +20,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# Download the models at build time, before the source is copied, so a code change does not fetch them again.
+RUN HF_HUB_OFFLINE=0 uv run --no-project python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/models'); from rapidocr_onnxruntime import RapidOCR; RapidOCR(); print('models cached')"
+
 COPY src ./src
 RUN uv sync --frozen --no-dev
-
-# Download the models at build time (the only network access the image ever needs for them).
-RUN HF_HUB_OFFLINE=0 uv run python -c "from ragdemo.embed import Embedder; from ragdemo.ingest.ocr import Ocr; from pathlib import Path; Embedder(cache_dir=Path('/models')); Ocr(); print('models cached')"
 
 COPY data/corpus ./data/corpus
 COPY data/eval/questions.json data/eval/latest-*.md ./data/eval/
