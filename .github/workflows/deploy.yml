@@ -1,0 +1,100 @@
+name: deploy
+
+# A push to master is a rollout: the tests, the image, the app, a look at /api/health.
+# Documentation changes nothing the server runs, so it starts nothing.
+# Started by hand on another branch, it runs the tests only.
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['docs/**', '**.md', 'progress.md']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-rag-docs-demo
+  APP: ragdemo-app
+  IMAGE: ghcr.io/ekotovqa/rag-docs-demo
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: ragdemo
+          POSTGRES_PASSWORD: ragdemo
+          POSTGRES_DB: ragdemo
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U ragdemo -d ragdemo"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run pytest
+        env:
+          DATABASE_URL: postgresql://ragdemo:ragdemo@localhost:54329/ragdemo
+
+  image:
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Roll out the image
+        run: az containerapp update -n "$APP" -g "$RESOURCE_GROUP" --image "$IMAGE:${{ github.sha }}" --output none
+      - name: Wait for /api/health
+        run: |
+          fqdn=$(az containerapp show -n "$APP" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 40); do
+            body=$(curl -s --max-time 20 "https://$fqdn/api/health" || true)
+            echo "$body"
+            case "$body" in *'"status":"ok"'*) exit 0;; esac
+            sleep 15
+          done
+          echo "the app did not report ok" >&2; exit 1

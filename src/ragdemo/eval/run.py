@@ -152,8 +152,8 @@ def run_eval(corpus_dir: Path, out_dir: Path, retrieval_only: bool = False, limi
     (out_dir / f"results-{mode}-{stamp}.json").write_text(
         json.dumps({"when": when, "mode": mode, "settings": {"model": s.ragdemo_model, "effort": s.ragdemo_effort,
                     "top_k": s.ragdemo_top_k, "embed_model": s.ragdemo_embed_model}, "summary": summary, "rows": rows},
-                   indent=1, ensure_ascii=False), encoding="utf-8")
+                   indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
     report = markdown_report(summary, not retrieval_only, when)
-    (out_dir / f"latest-{mode}.md").write_text(report, encoding="utf-8")
+    (out_dir / f"latest-{mode}.md").write_text(report, encoding="utf-8", newline="\n")
     print("\n" + report)
     return 0

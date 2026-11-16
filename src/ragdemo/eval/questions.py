@@ -137,7 +137,7 @@ def build_questions(docs: list[Doc], seed: int = 7) -> list[Question]:
 
 def save_questions(questions: list[Question], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([q.to_dict() for q in questions], indent=1, ensure_ascii=False), encoding="utf-8")
+    path.write_text(json.dumps([q.to_dict() for q in questions], indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
 
 
 def load_questions(path: Path) -> list[Question]:

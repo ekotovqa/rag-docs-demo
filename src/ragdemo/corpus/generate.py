@@ -485,7 +485,7 @@ def write_corpus(out_dir: Path, seed: int = SEED, work_dir: Path | None = None) 
     (out_dir / "ground_truth.json").write_text(
         json.dumps({"seed": seed, "buyer": asdict(BUYER), "documents": [asdict(d) for d in docs]},
                    indent=1, ensure_ascii=False),
-        encoding="utf-8",
+        encoding="utf-8", newline="\n",
     )
     return docs
 

@@ -111,17 +111,23 @@ async function ask() {
     const r = await fetch("/api/ask", { method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({ question }) });
     const j = await r.json();
     if (!r.ok) { $("answer").innerHTML = `<span class="err">${esc(j.detail || r.statusText)}</span>`; return; }
-    $("answer").innerHTML = renderAnswer(j.answer);
-    if (j.refused) $("answer").classList.add("refused");
-    const cost = j.cost_usd == null ? "cost n/a" : `$${j.cost_usd.toFixed(4)}`;
-    $("meta").innerHTML = [
-      `model ${esc(j.model)}`,
-      `retrieval ${Math.round(j.retrieval_ms)} ms`,
-      `model ${Math.round(j.latency_ms)} ms`,
-      `${j.input_tokens} in / ${j.output_tokens} out tokens` + (j.cache_read_tokens ? ` (${j.cache_read_tokens} cached)` : ""),
-      cost,
-      `spent today $${j.spent_today_usd} of $${j.daily_budget_usd}`,
-    ].map((s) => `<span>${s}</span>`).join("");
+    if (j.error) {
+      $("answer").innerHTML = `<span class="err">No answer: ${esc(j.error)}</span>`;
+      $("meta").innerHTML = `<span>retrieval ${Math.round(j.retrieval_ms)} ms</span><span>the chunks below are what the model would have read</span>`;
+    } else {
+      $("answer").innerHTML = renderAnswer(j.answer);
+      if (j.refused) $("answer").classList.add("refused");
+      const cost = j.cost_usd == null ? "cost n/a" : `$${j.cost_usd.toFixed(4)}`;
+      $("meta").innerHTML = [
+        `model ${esc(j.model)}`,
+        `retrieval ${Math.round(j.retrieval_ms)} ms`,
+        `model ${Math.round(j.latency_ms)} ms`,
+        `${j.input_tokens} in / ${j.output_tokens} out tokens` + (j.cache_read_tokens ? ` (${j.cache_read_tokens} cached)` : ""),
+        cost,
+        `spent today $${j.spent_today_usd} of $${j.daily_budget_usd}`,
+      ].map((s) => `<span>${s}</span>`).join("");
+    }
+    $("retrieved").open = !!j.error;
     $("cites").innerHTML = j.citations.map((c) =>
       `<div class="cite" id="cite-${c.n}"><b>[${c.n}]</b> <a href="/files/${encodeURIComponent(c.file)}#page=${c.page}" target="_blank">${esc(c.file)}, page ${c.page}</a>: <q>${esc(c.quote)}</q></div>`
     ).join("");

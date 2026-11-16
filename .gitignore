@@ -7,3 +7,4 @@ data/work/
 data/eval/results-*.json
 *.egg-info/
 dist/
+.claude/

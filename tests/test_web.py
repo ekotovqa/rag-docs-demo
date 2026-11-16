@@ -56,6 +56,25 @@ def test_ask_returns_answer_citations_hits_and_budget(client):
     assert st.answerer.questions == [("What is the total due on invoice A?", None)]
 
 
+def test_no_model_still_returns_the_retrieved_chunks(client):
+    from ragdemo.retrieve import Retrieval
+
+    c, st = client
+
+    class NoKey:
+        def ask(self, question, k=None):
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    class FakeRetriever:
+        def search(self, question, k=None):
+            return Retrieval(question, [Hit(7, "B.pdf", 1, 0, "chunk", "ocr", 0.02, 1, 0.3, None, None)], [], 5.0, 50.0)
+
+    st.answerer, st.retriever = NoKey(), FakeRetriever()
+    j = c.post("/api/ask", json={"question": "anything about B"}).json()
+    assert j["error"] == "ANTHROPIC_API_KEY is not set" and j["refused"] and j["citations"] == []
+    assert j["hits"][0]["file"] == "B.pdf" and j["retrieval_ms"] == 55.0 and j["spent_today_usd"] == 0
+
+
 def test_question_validation(client):
     c, _ = client
     assert c.post("/api/ask", json={"question": "hi"}).status_code == 422

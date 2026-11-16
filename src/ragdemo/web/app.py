@@ -175,14 +175,29 @@ def ask(req: AskRequest, request: Request) -> dict[str, Any]:
     st = require_ready()
     ip = request.client.host if request.client else "?"
     st.budget.check(ip)
+    question = req.question.strip()
     try:
-        answer = st.answerer.ask(req.question.strip(), k=req.k)
+        answer = st.answerer.ask(question, k=req.k)
     except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    st.budget.add(answer.cost_usd)
-    out = answer.to_dict()
+        # No model (no key): retrieval still works, and the page shows what would have gone to the model.
+        retrieval = st.retriever.search(question, k=req.k)
+        out = retrieval_only_payload(question, retrieval, str(exc))
+    else:
+        st.budget.add(answer.cost_usd)
+        out = answer.to_dict()
+        out["error"] = None
     out["spent_today_usd"] = round(st.budget.spent_usd, 4)
     out["daily_budget_usd"] = st.budget.daily_usd
+    return out
+
+
+def retrieval_only_payload(question: str, retrieval: Any, error: str) -> dict[str, Any]:
+    from ..answer import Answer
+
+    stub = Answer(question, "", True, [], "", "", "no_model", 0, 0, 0, 0, None, 0.0,
+                  retrieval.embed_ms + retrieval.search_ms, retrieval.hits, "")
+    out = stub.to_dict()
+    out["error"] = error
     return out
 
 
