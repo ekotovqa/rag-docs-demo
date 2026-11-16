@@ -1,0 +1,11 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+data/work
+data/eval/results-*.json
+tests
+docs
+progress.md
+.env
+*.png

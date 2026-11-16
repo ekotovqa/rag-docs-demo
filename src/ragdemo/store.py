@@ -17,9 +17,11 @@ from .ingest.chunk import Chunk
 
 RRF_K = 60
 # A chunk that matches a term of at least this weight (a document number, a SKU) names the document
-# the question is about; that beats any semantic neighbour. The boost is larger than any rank difference.
+# the question is about; that beats any semantic neighbour. The boost exceeds the largest fused score
+# two first ranks can produce (2 / (RRF_K + 1) = 0.033), so such chunks always come first; among
+# themselves they keep the RRF order.
 ID_WEIGHT = 3.0
-ID_BOOST = 0.01
+ID_BOOST = 0.05
 
 
 @dataclass
@@ -35,6 +37,7 @@ class Hit:
     vec_dist: float | None
     lex_rank: int | None
     lex_score: float | None
+    has_id: bool = False  # matched a document number or SKU named in the question
 
 
 SCHEMA = """
@@ -85,7 +88,7 @@ vec AS (
     LIMIT %(n)s
 )
 SELECT c.id, c.file, c.page, c.idx, c.text, c.source,
-       vec.r AS vec_rank, vec.dist AS vec_dist, lex.r AS lex_rank, lex.lex_score,
+       vec.r AS vec_rank, vec.dist AS vec_dist, lex.r AS lex_rank, lex.lex_score, COALESCE(lex.has_id, false) AS has_id,
        COALESCE(1.0 / (%(rrf)s + vec.r), 0) + COALESCE(1.0 / (%(rrf)s + lex.r), 0)
        + CASE WHEN lex.has_id THEN %(id_boost)s ELSE 0 END AS score
 FROM chunks c
@@ -157,7 +160,7 @@ class Store:
             rows = conn.execute(SEARCH_SQL, params).fetchall()
         return [Hit(r["id"], r["file"], r["page"], r["idx"], r["text"], r["source"], float(r["score"]),
                     r["vec_rank"], None if r["vec_dist"] is None else float(r["vec_dist"]),
-                    r["lex_rank"], None if r["lex_score"] is None else float(r["lex_score"])) for r in rows]
+                    r["lex_rank"], None if r["lex_score"] is None else float(r["lex_score"]), bool(r["has_id"])) for r in rows]
 
     def stats(self) -> dict[str, Any]:
         with self.connect() as conn:

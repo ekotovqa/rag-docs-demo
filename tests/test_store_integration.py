@@ -53,8 +53,9 @@ def test_replace_search_and_fuse(store):
     hits = store.search(vec(2), [("INV-2025-0001", 3.0), ("total", 0.4)], k=3)
     assert [h.file for h in hits] == ["INV-1.pdf", "INV-1.pdf", "INV-2.pdf"]
     assert hits[0].page == 2, "the chunk matching both the number and 'total' wins"
-    assert hits[0].lex_score == 3.4 and hits[0].lex_rank == 1
-    assert hits[2].vec_rank == 1, "the vector neighbour is still in the list"
+    assert hits[0].lex_score == 3.4 and hits[0].lex_rank == 1 and hits[0].has_id
+    assert hits[2].vec_rank == 1 and not hits[2].has_id, "the vector neighbour is still in the list"
+    assert hits[1].score > hits[2].score + 0.03, "a lexical-only document match outranks a vector-and-lexical neighbour"
 
     # without an identifier, the fusion is plain RRF and the vector side can win
     hits = store.search(vec(2), [("total", 0.4)], k=3)

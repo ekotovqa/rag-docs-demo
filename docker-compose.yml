@@ -1,0 +1,15 @@
+# Local development: Postgres with pgvector. The app itself runs from the venv (`uv run ragdemo serve`).
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: ragdemo-pg
+    environment:
+      POSTGRES_USER: ragdemo
+      POSTGRES_PASSWORD: ragdemo
+      POSTGRES_DB: ragdemo
+    ports:
+      - "54329:5432"
+    volumes:
+      - ragdemo-pg:/var/lib/postgresql/data
+volumes:
+  ragdemo-pg:
