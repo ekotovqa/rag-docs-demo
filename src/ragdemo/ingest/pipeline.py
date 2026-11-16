@@ -13,6 +13,14 @@ from .ocr import Ocr
 from .pdf import extract_pages, sha256
 
 
+# Bump when extraction, OCR post-processing or chunking changes: every file is then re-indexed on the next run.
+PIPELINE_VERSION = 2
+
+
+def index_key(path: Path) -> str:
+    return f"{sha256(path)}:v{PIPELINE_VERSION}"
+
+
 @dataclass
 class IngestReport:
     ingested: list[str] = field(default_factory=list)
@@ -32,7 +40,7 @@ def ingest_dir(corpus_dir: Path, store: Store, embedder: Embedder, ocr: Ocr | No
     state = {} if force else store.document_state()
     files = sorted(corpus_dir.glob("*.pdf"))
     for path in files:
-        sha = sha256(path)
+        sha = index_key(path)
         if state.get(path.name) == sha:
             report.skipped.append(path.name)
             continue

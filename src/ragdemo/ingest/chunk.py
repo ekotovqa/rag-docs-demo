@@ -12,9 +12,10 @@ from dataclasses import dataclass
 
 from .pdf import Page
 
+# `\s*` between the words: OCR output may have lost the spaces.
 HEADER_RE = re.compile(
-    r"(INVOICE|PURCHASE ORDER|Invoice no\.|PO number|Invoice date|Order date|Due date|"
-    r"Your PO reference|\(continued\)|Requested delivery)",
+    r"(INVOICE|PURCHASE\s*ORDER|Invoice\s*no\.?|PO\s*number|Invoice\s*date|Order\s*date|Due\s*date|"
+    r"Your\s*PO\s*reference|\(\s*continued\s*\)|Requested\s*delivery)",
     re.IGNORECASE,
 )
 HEADER_SCAN_LINES = 14

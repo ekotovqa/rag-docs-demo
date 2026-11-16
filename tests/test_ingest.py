@@ -1,5 +1,5 @@
 from ragdemo.ingest.chunk import chunk_page, header_lines, split_lines
-from ragdemo.ingest.ocr import Word, lines_from_words, normalize
+from ragdemo.ingest.ocr import Word, lines_from_words, normalize, respace
 from ragdemo.ingest.pdf import Page
 
 PAGE1 = """K
@@ -94,3 +94,19 @@ def test_ocr_words_become_reading_order_lines():
 def test_ocr_normalizes_fullwidth_punctuation():
     assert normalize("1，862．00％") == "1,862.00%"
     assert normalize("KS－RE") == "KS-RE"
+
+
+def test_respace_restores_word_boundaries_without_touching_numbers():
+    assert respace("InvoiceHH-0107(continued) Page") == "Invoice HH-0107 (continued) Page"
+    assert respace("PurchaseOrderPO-2025-0413(continued)") == "Purchase Order PO-2025-0413 (continued)"
+    assert respace("POnumber:PO-2025-0413") == "POnumber: PO-2025-0413"
+    assert respace("Invoiceno.:KS-RE-25-0835 | Duedate:08/26/2025") == "Invoiceno.: KS-RE-25-0835 | Duedate: 08/26/2025"
+    assert respace("Hydraulicoil ISOVG46,20L 6 68.30 409.80") == "Hydraulicoil ISOVG46,20L 6 68.30 409.80"
+    assert respace("Subtotal $1,462.60") == "Subtotal $1,462.60"
+    assert respace("RL-OAK-25 Oakboard25mm,perm2 5 72.00") == "RL-OAK-25 Oakboard 25mm, perm 2 5 72.00"
+    assert respace("Oakridge FabricationWorksLtd") == "Oakridge Fabrication Works Ltd"
+
+
+def test_header_regex_tolerates_missing_spaces():
+    lines = ["Oakridge FabricationWorksLtd PURCHASEORDER", "48MillLane", "POnumber: PO-2025-0407", "Orderdate: 2025-06-23", "Hello"]
+    assert header_lines(lines) == ["Oakridge FabricationWorksLtd PURCHASEORDER", "POnumber: PO-2025-0407", "Orderdate: 2025-06-23"]

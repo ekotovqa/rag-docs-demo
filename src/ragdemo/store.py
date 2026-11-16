@@ -74,6 +74,7 @@ lex AS (
     FROM chunks c
     JOIN terms t ON c.tsv @@ plainto_tsquery('simple', t.term)
     GROUP BY c.id
+    ORDER BY SUM(t.w) DESC, c.id
     LIMIT %(n)s
 ),
 vec AS (

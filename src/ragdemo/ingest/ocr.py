@@ -1,6 +1,7 @@
 """OCR for pages without a text layer. RapidOCR runs on ONNX Runtime: no system packages, no service, no key."""
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 from statistics import median
@@ -12,6 +13,32 @@ from PIL import Image
 def normalize(text: str) -> str:
     """RapidOCR is trained on Chinese and Latin text and emits full-width punctuation; fold it to ASCII."""
     return unicodedata.normalize("NFKC", text)
+
+
+_RESPACE = (
+    (re.compile(r"([a-z])([A-Z])"), r"\1 \2"),          # InvoiceHH-0107 -> Invoice HH-0107, PurchaseOrderPO -> Purchase Order PO
+    (re.compile(r"([a-z])(\d)"), r"\1 \2"),             # Oakboard25mm -> Oakboard 25mm
+    (re.compile(r":(?=\S)"), ": "),                     # POnumber:PO-2025-0413 -> POnumber: PO-2025-0413
+    (re.compile(r",(?=[A-Za-z])"), ", "),               # oil,20L -> oil, 20L (never inside 1,462.60)
+    (re.compile(r"(?<=\S)\("), " ("),                   # 0107(continued) -> 0107 (continued)
+    (re.compile(r"\)(?=\S)"), ") "),
+    (re.compile(r"[ ]{2,}"), " "),
+)
+
+
+def respace(text: str) -> str:
+    """Put back the spaces the recognizer drops inside a line.
+
+    The lexical index tokenizes the text with the same parser the query goes through, so a
+    document number glued to the word before it ("InvoiceHH-0107") is a different token than
+    the number on its own. These rules only add spaces; they never change characters.
+    """
+    out = []
+    for line in text.splitlines():
+        for pattern, repl in _RESPACE:
+            line = pattern.sub(repl, line)
+        out.append(line.strip())
+    return "\n".join(out)
 
 
 @dataclass
@@ -66,4 +93,4 @@ class Ocr:
         return words
 
     def read(self, image: Image.Image) -> str:
-        return lines_from_words(self.words(image))
+        return respace(lines_from_words(self.words(image)))
