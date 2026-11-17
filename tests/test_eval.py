@@ -23,6 +23,13 @@ def test_numbers_in_text():
     assert {Decimal("1862.00"), Decimal("10"), Decimal("61.20"), Decimal("28"), Decimal("2025")} <= found
 
 
+def test_numbers_in_a_run_of_values_are_separate():
+    # a quoted table row: "Cat6, 5 m 30 4.10 123.00" holds five numbers, and "Net 30 2025" is not 302025
+    found = numbers_in("CR-CBL-ETH Ethernet patch cable Cat6, 5 m 30 4.10 123.00; Net 30 due 2025; total 1 862,00 EUR")
+    assert {Decimal("6"), Decimal("5"), Decimal("30"), Decimal("4.10"), Decimal("123.00"), Decimal("2025"), Decimal("1862.00")} <= found
+    assert Decimal("302025") not in found and Decimal("304.10") not in found
+
+
 def test_answer_matches_by_type():
     assert answer_matches("The total due is $1,440.00.", ["1440.00"], "number")
     assert answer_matches("Total: 1.440,00 EUR", ["1440.00"], "number")
@@ -77,6 +84,11 @@ def test_expected_values_match_ground_truth():
         if q.kind == "qty":
             d = by_file[q.gold[0][0]]
             assert any(str(line.qty) == q.expected[0] and line.page == q.gold[0][1] for line in d.lines)
+            sku = next(line.sku for line in d.lines if line.sku in q.question)
+            assert [line.sku for line in d.lines].count(sku) == 1, f"{q.id}: {sku} is on several lines, the question is ambiguous"
+        if q.kind == "unit_price":
+            d = by_file[q.gold[0][0]]
+            assert sum(line.description in q.question for line in d.lines) == 1, f"{q.id}: ambiguous description"
 
 
 def test_summary_and_report_shape():

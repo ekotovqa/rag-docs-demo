@@ -21,7 +21,7 @@ RRF_K = 60
 # two first ranks can produce (2 / (RRF_K + 1) = 0.033), so such chunks always come first; among
 # themselves they keep the RRF order.
 ID_WEIGHT = 3.0
-ID_BOOST = 0.05
+ID_BOOST = 0.05  # per identifier matched; one match is above the RRF ceiling of 2/61, two leave no doubt
 
 
 @dataclass
@@ -38,6 +38,7 @@ class Hit:
     lex_rank: int | None
     lex_score: float | None
     has_id: bool = False  # matched a document number or SKU named in the question
+    id_matches: int = 0  # how many of them: a chunk naming both the order and the SKU beats one naming either
 
 
 SCHEMA = """
@@ -73,6 +74,7 @@ WITH terms AS (
 lex AS (
     SELECT c.id, SUM(t.w) AS lex_score,
            bool_or(t.w >= %(id_weight)s) AS has_id,
+           SUM(CASE WHEN t.w >= %(id_weight)s THEN 1 ELSE 0 END) AS id_matches,
            row_number() OVER (ORDER BY SUM(t.w) DESC, c.id) AS r
     FROM chunks c
     JOIN terms t ON c.tsv @@ plainto_tsquery('simple', t.term)
@@ -89,8 +91,9 @@ vec AS (
 )
 SELECT c.id, c.file, c.page, c.idx, c.text, c.source,
        vec.r AS vec_rank, vec.dist AS vec_dist, lex.r AS lex_rank, lex.lex_score, COALESCE(lex.has_id, false) AS has_id,
+       COALESCE(lex.id_matches, 0) AS id_matches,
        COALESCE(1.0 / (%(rrf)s + vec.r), 0) + COALESCE(1.0 / (%(rrf)s + lex.r), 0)
-       + CASE WHEN lex.has_id THEN %(id_boost)s ELSE 0 END AS score
+       + %(id_boost)s * COALESCE(lex.id_matches, 0) AS score
 FROM chunks c
 LEFT JOIN vec ON vec.id = c.id
 LEFT JOIN lex ON lex.id = c.id
@@ -160,7 +163,8 @@ class Store:
             rows = conn.execute(SEARCH_SQL, params).fetchall()
         return [Hit(r["id"], r["file"], r["page"], r["idx"], r["text"], r["source"], float(r["score"]),
                     r["vec_rank"], None if r["vec_dist"] is None else float(r["vec_dist"]),
-                    r["lex_rank"], None if r["lex_score"] is None else float(r["lex_score"]), bool(r["has_id"])) for r in rows]
+                    r["lex_rank"], None if r["lex_score"] is None else float(r["lex_score"]), bool(r["has_id"]),
+                    int(r["id_matches"])) for r in rows]
 
     def stats(self) -> dict[str, Any]:
         with self.connect() as conn:

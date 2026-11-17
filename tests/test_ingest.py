@@ -104,6 +104,26 @@ def test_respace_restores_word_boundaries_without_touching_numbers():
     assert respace("Hydraulicoil ISOVG46,20L 6 68.30 409.80") == "Hydraulicoil ISOVG46,20L 6 68.30 409.80"
     assert respace("Subtotal $1,462.60") == "Subtotal $1,462.60"
     assert respace("RL-OAK-25 Oakboard25mm,perm2 5 72.00") == "RL-OAK-25 Oakboard 25mm, perm 2 5 72.00"
+    # a digit glued to the word after it: dates, addresses, a quantity glued to the SKU
+    assert respace("Invoicedate: 23Jul 2025 Due date: 06Aug 2025 00160Helsinki") == "Invoicedate: 23 Jul 2025 Due date: 06 Aug 2025 00160 Helsinki"
+    assert respace("8KS-PIPE-33 Round tube 33.7x2.6,6m 29.45").startswith("8 KS-PIPE-33 Round tube")
+    assert respace("Sheffield S9 2XT Tax ID: GB447221083 DE44 3505 0000") == "Sheffield S9 2XT Tax ID: GB447221083 DE44 3505 0000"
+    assert respace("TOTALDUE 652,30EUR SUBTOTALDUE ORDERTOTAL") == "TOTAL DUE 652,30EUR SUBTOTAL DUE ORDER TOTAL"
+
+
+def test_rotated_scan_rows_are_not_chained_together():
+    # a 1.3 degree rotation: the cells of one row drop 32 px from the left column to the right one,
+    # while rows are 50 px apart and boxes 40 px tall, as on the Moravia scan
+    xs = [250, 600, 1150, 1400, 1650]
+    cells = [["MT-DRL-SET", "HSS drill set", "1", "58,90", "58,90"],
+             ["MT-TAP-M8", "Machine tap M8", "24", "12,60", "302,40"],
+             ["MT-END-10", "Carbide end mill", "5", "34,20", "171,00"]]
+    words = []
+    for r, row in enumerate(cells):
+        for x, text in zip(xs, row):
+            y0 = 830 + 50 * r + 0.023 * (x - 250)
+            words.append(Word(x, y0, x + 90, y0 + 40, text, 0.99))
+    assert lines_from_words(words).splitlines() == [" ".join(row) for row in cells]
     assert respace("Oakridge FabricationWorksLtd") == "Oakridge Fabrication Works Ltd"
 
 

@@ -14,7 +14,7 @@ from .pdf import extract_pages, sha256
 
 
 # Bump when extraction, OCR post-processing or chunking changes: every file is then re-indexed on the next run.
-PIPELINE_VERSION = 2
+PIPELINE_VERSION = 3
 
 
 def index_key(path: Path) -> str:

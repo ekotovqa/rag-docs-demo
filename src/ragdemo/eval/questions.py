@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json
 import random
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from ..corpus.generate import Doc, date_variants, load_ground_truth
+from ..corpus.generate import Doc, Line, date_variants, load_ground_truth
 
 
 @dataclass
@@ -83,14 +84,21 @@ def build_questions(docs: list[Doc], seed: int = 7) -> list[Question]:
     for d in rng.sample(invoices, k=5):
         add("terms", f"What are the payment terms on invoice {d.number}?", d, [d.terms], "text", [(d.file, 1), (d.file, d.totals_page)])
 
-    # line items: quantities and unit prices, picked so that second pages get asked about
-    for d in rng.sample(orders, k=8):
-        line = max(d.lines, key=lambda line: line.page) if rng.random() < 0.6 else rng.choice(d.lines)
+    # line items: quantities and unit prices, picked so that second pages get asked about.
+    # Only SKUs that occur once in the document: "how many X" has one answer then.
+    def unique_lines(d: Doc) -> list[Line]:
+        counts = Counter(line.sku for line in d.lines)
+        return [line for line in d.lines if counts[line.sku] == 1]
+
+    for d in rng.sample([o for o in orders if unique_lines(o)], k=8):
+        lines = unique_lines(d)
+        line = max(lines, key=lambda line: line.page) if rng.random() < 0.6 else rng.choice(lines)
         add("qty", rng.choice([f"How many {line.unit}(s) of {line.sku} were ordered on {d.number}?",
                                f"What quantity of {line.sku} does purchase order {d.number} specify?"]),
             d, [str(line.qty)], "number", [(d.file, line.page)])
-    for d in rng.sample(invoices, k=6):
-        line = max(d.lines, key=lambda line: line.page) if rng.random() < 0.6 else rng.choice(d.lines)
+    for d in rng.sample([i for i in invoices if unique_lines(i)], k=6):
+        lines = unique_lines(d)
+        line = max(lines, key=lambda line: line.page) if rng.random() < 0.6 else rng.choice(lines)
         add("unit_price", f"What is the unit price of \"{line.description}\" on invoice {d.number}?",
             d, money(line.unit_price), "number", [(d.file, line.page)])
 

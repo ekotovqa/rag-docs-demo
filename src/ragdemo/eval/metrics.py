@@ -4,7 +4,9 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-NUMBER_RE = re.compile(r"\d(?:[\d,.\s]*\d)?")
+# A space is a thousands separator only between groups of exactly three digits ("1 862,00");
+# otherwise "5 m 30 4.10" is five numbers, not one run of digits.
+NUMBER_RE = re.compile(r"\d{1,3}(?:[ \u00a0]\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)*")
 
 
 def parse_number(token: str) -> Decimal | None:

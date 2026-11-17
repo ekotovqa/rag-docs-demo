@@ -6,7 +6,7 @@ import psycopg
 import pytest
 
 from ragdemo.ingest.chunk import Chunk
-from ragdemo.store import Store
+from ragdemo.store import ID_BOOST, Store
 
 DSN = os.environ.get("DATABASE_URL", "postgresql://ragdemo:ragdemo@localhost:54329/ragdemo")
 DIM = 8
@@ -66,6 +66,11 @@ def test_replace_search_and_fuse(store):
                            [Chunk("NC.pdf", 1, 0, "Invoice no.: NC/2025/0912 Terminal block AE-TB-2.5", "text", "h")], [vec(3)])
     assert store.search(vec(7), [("NC/2025/0912", 3.0)], k=1)[0].file == "NC.pdf"
     assert store.search(vec(7), [("AE-TB-2.5", 3.0)], k=1)[0].file == "NC.pdf"
+    # a chunk matching two identifiers (the document and the SKU) outranks every chunk matching one,
+    # whatever their vector ranks: the boost counts identifiers, it is not a flag
+    hits = store.search(vec(2), [("NC/2025/0912", 3.0), ("AE-TB-2.5", 3.0), ("INV-2025-0001", 3.0)], k=3)
+    assert hits[0].file == "NC.pdf" and hits[0].id_matches == 2 and hits[0].vec_rank != 1
+    assert hits[1].id_matches == 1 and hits[0].score > hits[1].score + ID_BOOST / 2
 
     # re-ingesting a file replaces its chunks; removing files drops them
     store.replace_document("INV-2.pdf", "sha-b2", 1, 0, chunks_b[:1], [vec(4)])
