@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ragdemo_effort: str = "medium"
     ragdemo_fallbacks: bool = True
     ragdemo_top_k: int = 6
+    ragdemo_cors_origins: str = "https://ekotovqa.github.io"  # the front door that wakes the app; comma-separated
     ragdemo_embed_model: str = "BAAI/bge-small-en-v1.5"
     ragdemo_corpus_dir: Path = Path("data/corpus")
     ragdemo_eval_dir: Path = Path("data/eval")

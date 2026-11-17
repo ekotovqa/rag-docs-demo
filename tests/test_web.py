@@ -75,6 +75,16 @@ def test_no_model_still_returns_the_retrieved_chunks(client):
     assert j["hits"][0]["file"] == "B.pdf" and j["retrieval_ms"] == 55.0 and j["spent_today_usd"] == 0
 
 
+def test_health_is_readable_from_the_front_door_origin_only(client):
+    c, _ = client
+    r = c.get("/api/health", headers={"Origin": "https://ekotovqa.github.io"})
+    assert r.headers.get("access-control-allow-origin") == "https://ekotovqa.github.io"
+    r = c.get("/api/health", headers={"Origin": "http://localhost:8765"})
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:8765", "a local copy of the door"
+    r = c.get("/api/health", headers={"Origin": "https://somewhere.example"})
+    assert "access-control-allow-origin" not in r.headers
+
+
 def test_question_validation(client):
     c, _ = client
     assert c.post("/api/ask", json={"question": "hi"}).status_code == 422

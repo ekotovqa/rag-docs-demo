@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -204,6 +205,12 @@ def retrieval_only_payload(question: str, retrieval: Any, error: str) -> dict[st
 def create_app(boot: bool = True) -> FastAPI:
     """`boot=False` skips loading models and the database: tests use it with a fake state."""
     application = FastAPI(title="rag-docs-demo", lifespan=lifespan if boot else None)
+    # The front door (a static page that wakes the app and shows progress) reads /api/health from
+    # another origin; a local copy of it runs on localhost. Reads only: asking stays same-origin.
+    origins = [o.strip() for o in settings().ragdemo_cors_origins.split(",") if o.strip()]
+    application.add_middleware(CORSMiddleware, allow_origins=origins,
+                               allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+                               allow_methods=["GET"], max_age=600)
     application.include_router(router)
     return application
 

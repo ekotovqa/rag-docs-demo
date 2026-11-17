@@ -3,9 +3,13 @@
 Question answering over a folder of business PDFs (purchase orders and invoices, a third of
 them scans) with page-level citations and a measured retrieval quality.
 
-**Live:** https://ragdemo-app.wittymoss-fb05dd78.francecentral.azurecontainerapps.io
-(scales to zero: the first request after a quiet spell takes about a minute while the
-container starts; after that an answer takes 3–6 seconds).
+**Live:** https://ekotovqa.github.io/rag-docs-demo/
+
+The link is a static front door: the app scales to zero when idle and takes up to 75 seconds
+to wake, so the door wakes it, shows the wait honestly (an 8-bit paper plane on a 75-second
+schedule, stations that light up on the real signals, a clock) and takes your question
+meanwhile; the question is asked the moment the server is up. The app itself is at
+https://ragdemo-app.wittymoss-fb05dd78.francecentral.azurecontainerapps.io (an answer takes 3–6 seconds once awake).
 
 Built to show how I approach RAG for production, not as a tutorial:
 
@@ -181,6 +185,13 @@ to public (or a pull token added to the template, as cycling-coach does).
 Deployed this way on 17 Nov 2026: resource group `rg-rag-docs-demo`, app `ragdemo-app`
 (1 vCPU / 2 GiB, 0–1 replicas), the index built from a laptop beforehand, so the first start
 found 40 documents on Neon and skipped ingestion. Cold start to healthy: about 75 s.
+
+**The front door** is [`docs/index.html`](docs/index.html) on GitHub Pages: no build, no
+assets, the scene is drawn from matrices and coloured by the theme, with a reduced-motion
+variant. It reads `/api/health` cross-origin (the app allows that origin and localhost
+copies, reads only) and hands the question over as `?q=`. To try it locally:
+`python -m http.server 8765` inside `docs`, then `http://127.0.0.1:8765/?app=http://127.0.0.1:8000`
+against `ragdemo serve`.
 
 The Neon string is the direct endpoint, not the pooler: the schema and the `vector`
 extension are created on first start, and one app instance does not need connection

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rag-docs-demo</title>
+<meta name="description" content="Front door of the rag-docs-demo: wakes the sleeping server, shows the wait honestly, takes your question meanwhile.">
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1c1c1a; --muted: #6b6a63; --line: #e2e0d8;
+    --accent: #1f5f8b; --accent-ink: #ffffff; --ok: #2a7a3b; --warn: #a1542a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15161a; --panel: #1e2026; --ink: #ebe9e2; --muted: #9b9a92; --line: #30323a;
+      --accent: #6fb1e0; --accent-ink: #0f1a24; --ok: #7fcf8e; --warn: #e3a07a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15161a; --panel: #1e2026; --ink: #ebe9e2; --muted: #9b9a92; --line: #30323a;
+    --accent: #6fb1e0; --accent-ink: #0f1a24; --ok: #7fcf8e; --warn: #e3a07a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: .01em; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .sub a, .foot a { color: var(--accent); }
+  .scene { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+  canvas { display: block; width: 100%; height: 132px; image-rendering: pixelated; }
+  .stations { display: flex; justify-content: space-between; padding: 8px 12px 10px; font-size: 12.5px; color: var(--muted); gap: 8px; }
+  .stations span { flex: 1; text-align: center; transition: color .3s; }
+  .stations span.lit { color: var(--accent); font-weight: 600; }
+  .stations span.now { color: var(--ink); font-weight: 600; }
+  .bar { height: 3px; background: var(--line); }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s linear; }
+  .wait { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 14px 0 6px; }
+  .clock { font: 600 34px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 3.2em; }
+  .clock small { font-size: 16px; font-weight: 500; color: var(--muted); }
+  .state { color: var(--muted); }
+  .state.ok { color: var(--ok); }
+  .state.warn { color: var(--warn); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+  .panel h2 { font-size: 15px; margin: 0 0 8px; }
+  .panel p { margin: 0 0 8px; }
+  .panel p:last-child { margin-bottom: 0; }
+  textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  button { font: inherit; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+  button[disabled] { opacity: .55; cursor: default; }
+  button.plain { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { font-size: 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer; color: var(--ink); }
+  .chip:hover { border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 13px; }
+  .hint a { color: var(--accent); }
+  .foot { color: var(--muted); font-size: 13px; margin-top: 22px; }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ask the invoices</h1>
+  <p class="sub">Question answering over 40 purchase orders and invoices, 14 of them scans, with page-level citations.
+    Plain Anthropic SDK, local embeddings, hybrid search in Postgres, an eval with exact answers.
+    <a href="https://github.com/ekotovqa/rag-docs-demo">Source and the measured numbers</a>.</p>
+
+  <div class="scene">
+    <canvas id="sky" height="132" aria-label="A paper plane flying towards the server while it wakes up" role="img"></canvas>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="stations" id="stations">
+      <span data-s="0">request sent</span>
+      <span data-s="1">container starting</span>
+      <span data-s="2">models loading</span>
+      <span data-s="3">index on Neon</span>
+      <span data-s="4">ready</span>
+    </div>
+  </div>
+
+  <div class="wait">
+    <div class="clock"><span id="secs">0</span><small> s</small></div>
+    <div class="state" id="state">Waking the server…</div>
+    <button class="plain" id="retry" hidden>Retry</button>
+  </div>
+
+  <div class="panel">
+    <h2>While it wakes: your question</h2>
+    <textarea id="q" autofocus placeholder="e.g. What is the total amount due on invoice AEC-0201?"></textarea>
+    <div class="row">
+      <button id="go" disabled>Waking up…</button>
+      <span class="hint" id="goHint">It will be asked the moment the server is up. Or <a id="direct" href="#">open the demo directly</a>.</span>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Why the wait: demo mode</h2>
+    <p>The server scales to zero when nobody asks. The first visit after a quiet spell waits while Azure
+      pulls a 1.5 GB image with the embedding and OCR models inside and the app loads them: usually
+      about a minute, up to 75 seconds. A production deployment keeps one replica warm; the demo stays
+      inside the free tier instead. Once awake it answers in 3–6 seconds and sleeps again after five
+      idle minutes.</p>
+    <p class="hint">The paper plane is on a 75-second schedule; the stations below it light up on the real signals:
+      the request leaves, the container answers, the app reports its models loaded and the index found on Neon.</p>
+  </div>
+
+  <p class="foot">The corpus is synthetic: generated documents with a known ground truth, no real company data.
+    Answers are limited to what the documents say; when they do not say it, the demo says so.</p>
+</main>
+<script>
+(() => {
+  const PROD = "https://ragdemo-app.wittymoss-fb05dd78.francecentral.azurecontainerapps.io";
+  const params = new URLSearchParams(location.search);
+  const APP = (params.get("app") || PROD).replace(/\/$/, "");
+  const EXPECTED = 75;               // seconds: the plane reaches the right edge here
+  const GIVE_UP = 240;               // seconds: after that the wait is a failure, not a slow start
+  const EXAMPLES = [
+    "What is the total amount due on invoice AEC-0201?",
+    "Which purchase order does invoice KS-RE-25-0835 refer to?",
+    "When is invoice LL0777 due?",
+    "How many units of CR-CBL-ETH does purchase order PO-2025-0411 specify?",
+    "Which IBAN should we pay invoice FV-2025-0219 to?",
+    "Has invoice HH-0107 been paid yet?",
+  ];
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- the wait: real signals ----------
+  const t0 = performance.now();
+  const now = () => (performance.now() - t0) / 1000;
+  let stage = 0;          // 0 sent, 1 container starting, 2 app up, 3 index found, 4 ready
+  let ready = null;       // seconds when the app said ok
+  let failed = false;
+  let left = false;       // the plane has flown off, we are leaving
+
+  function setStage(n) {
+    stage = Math.max(stage, n);
+    document.querySelectorAll("#stations span").forEach((el) => {
+      const s = +el.dataset.s;
+      el.classList.toggle("lit", s < stage);
+      el.classList.toggle("now", s === stage);
+    });
+  }
+  function setState(text, cls) { const el = $("state"); el.textContent = text; el.className = "state" + (cls ? " " + cls : ""); }
+
+  async function health() {
+    const r = await fetch(APP + "/api/health", { cache: "no-store" });
+    return r.json();
+  }
+  async function wake() {
+    failed = false; $("retry").hidden = true;
+    setStage(0); setState("Waking the server…");
+    const tick = setTimeout(() => { if (stage < 2 && !failed) setStage(1); }, 1200);
+    try {
+      let j = await health();      // this call is held open by the ingress until a container answers
+      clearTimeout(tick);
+      setStage(2);
+      while (j.status === "starting") {
+        setState("Container up, loading the models…");
+        await new Promise((res) => setTimeout(res, 1500));
+        j = await health();
+      }
+      if (j.status !== "ok") throw new Error(j.error || "the app failed to start");
+      setStage(3); setStage(4);
+      ready = now();
+      setState(`Ready in ${Math.round(ready)} s: ${j.documents} documents, ${j.chunks} chunks indexed. Opening the demo…`, "ok");
+      $("go").disabled = false; $("go").textContent = "Open the demo";
+      setTimeout(leave, reduced ? 300 : 800);
+    } catch (e) {
+      clearTimeout(tick);
+      failed = true;
+      $("retry").hidden = false;
+      setState("The server did not answer (" + (e.message || "network error") + "). Retry, or open the demo directly.", "warn");
+    }
+  }
+  function target() {
+    const q = $("q").value.trim();
+    return APP + "/" + (q.length >= 3 ? "?q=" + encodeURIComponent(q) : "");
+  }
+  function leave() { if (left) return; left = true; location.href = target(); }
+
+  $("retry").onclick = wake;
+  $("go").onclick = leave;
+  $("direct").href = APP + "/";
+  $("direct").onclick = (e) => { e.preventDefault(); left = true; location.href = target(); };
+  $("chips").innerHTML = EXAMPLES.map((q) => `<span class="chip">${esc(q)}</span>`).join("");
+  document.querySelectorAll(".chip").forEach((c) => c.onclick = () => { $("q").value = c.textContent; if (ready != null) leave(); });
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (ready != null) leave(); } });
+
+  // ---------- the scene: 8-bit, matrices coloured by the theme, no assets ----------
+  const CELL = 3, ROWS = 44;
+  const cv = $("sky"), ctx = cv.getContext("2d");
+  let W = 0;
+  function colour(role, alpha) {
+    const c = getComputedStyle(document.documentElement).getPropertyValue(role).trim();
+    const n = parseInt(c.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  }
+  let paints = {};
+  function repaint() {
+    paints = { ink: colour("--accent", 1), mid: colour("--accent", .45), far: colour("--accent", .16), sheet: colour("--ink", 1), ground: colour("--line", 1) };
+  }
+  function resize() {
+    const css = cv.clientWidth || 600;
+    W = Math.floor(css / CELL);
+    cv.width = W * CELL; cv.height = ROWS * CELL;
+    repaint();
+  }
+  const PLANE = [
+    [ "................",
+      "..............##",
+      ".........#####oo",
+      "....######ooooo.",
+      "##########oooo..",
+      "....######oo....",
+      ".........#o.....",
+      "..........#....." ],
+    [ "................",
+      "..............##",
+      ".........#####oo",
+      "....######ooooo.",
+      "##########oooo..",
+      "....######oo....",
+      "..........#.....",
+      "................" ],
+  ];
+  const CLOUD = ["..####...", ".#######.", "#########", "..#####.."];
+  const CLOUD2 = [".####.", "######", "..##.."];
+  const FLAG = ["#..", "##.", "###", "##.", "#..", "#..", "#..", "#.."];
+  // a seeded skyline: block widths and heights that repeat every W cells
+  function rnd(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+  let skyline = [];
+  function buildSkyline() {
+    const r = rnd(20251116); skyline = []; let x = 0;
+    while (x < W + 40) { const w = 4 + Math.floor(r() * 6), h = 5 + Math.floor(r() * 12); skyline.push([x, w, h]); x += w + 1 + Math.floor(r() * 3); }
+  }
+  const clouds = (() => { const r = rnd(7); return Array.from({ length: 7 }, (_, i) => [Math.floor(r() * 400), 3 + Math.floor(r() * 12), i % 3 === 0 ? CLOUD2 : CLOUD]); })();
+  function cell(x, y, paint) { if (x < 0 || x >= W || y < 0 || y >= ROWS) return; ctx.fillStyle = paint; ctx.fillRect(x * CELL, y * CELL, CELL, CELL); }
+  function sprite(m, x0, y0, paintFor) {
+    m.forEach((row, dy) => { for (let dx = 0; dx < row.length; dx++) { const ch = row[dx]; if (ch !== ".") cell(x0 + dx, y0 + dy, paintFor(ch)); } });
+  }
+  function planeX(t) {
+    // on schedule it crosses the width in EXPECTED seconds; once ready it accelerates off the right edge
+    const span = W + 16;
+    let x = Math.min(t / EXPECTED, 1) * span - 16;
+    if (ready != null) { const dt = t - ready; x += dt * dt * 220; }
+    return x;
+  }
+  function draw() {
+    const t = now();
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    // ground
+    for (let x = 0; x < W; x++) cell(x, ROWS - 1, paints.ground);
+    // far clouds, slow
+    const drift = failed ? 0 : t;
+    clouds.forEach(([cx, cy, m]) => sprite(m, ((cx - drift * 0.7) % (W + 20) + W + 20) % (W + 20) - 10, cy, () => paints.far));
+    // skyline, middle
+    const shift = Math.floor(drift * 1.6) % (W + 40);
+    skyline.forEach(([bx, bw, bh]) => { const x = ((bx - shift) % (W + 40) + W + 40) % (W + 40) - 20; for (let dx = 0; dx < bw; dx++) for (let dy = 0; dy < bh; dy++) cell(x + dx, ROWS - 2 - dy, paints.far); });
+    // near gravel, fast
+    const g = Math.floor(drift * 3);
+    for (let x = 0; x < W; x += 5) { const k = ((x + g) % 13 === 0) ? 1 : 0; cell(((x - g) % W + W) % W, ROWS - 2, k ? paints.mid : paints.far); }
+    // stations: flags at 8 / 29 / 50 / 71 / 92 % of the width, lit when reached
+    [0.08, 0.29, 0.5, 0.71, 0.92].forEach((p, i) => {
+      const x = Math.floor(p * W) - 1;
+      const lit = i < stage || (i === stage && ready != null);
+      sprite(FLAG, x, ROWS - 10, () => lit ? paints.ink : paints.far);
+      if (i === stage && ready == null && Math.floor(t * 2) % 2 === 0) sprite(FLAG, x, ROWS - 10, () => paints.mid);
+    });
+    // the plane and its trail
+    const x = Math.round(planeX(t));
+    const bob = reduced ? 0 : Math.round(Math.sin(t * 2.2) * 1.5);
+    const y = 16 + bob + (failed ? 6 : 0);
+    const frame = reduced ? 0 : Math.floor(t * 4) % 2;
+    [[-3, .45], [-6, .16]].forEach(([d, a]) => cell(x + d, y + 4, a > .3 ? paints.mid : paints.far));
+    sprite(PLANE[frame], x, y, (ch) => ch === "o" ? paints.ink : paints.sheet);
+    if (x > W + 20 && ready != null) leave();
+  }
+  function clock() {
+    if (failed) return;           // the clock and the bar stop with the plane; Retry resumes them
+    const t = now();
+    $("secs").textContent = Math.floor(ready != null ? ready : t);
+    $("bar").style.width = Math.min(t / EXPECTED, 1) * 100 + "%";
+    if (ready == null && !failed) {
+      if (t > GIVE_UP) { failed = true; $("retry").hidden = false; setState("Still no answer after four minutes. The demo is probably down; the source and the eval are on GitHub.", "warn"); }
+      else if (t > EXPECTED) setState("Taking longer than usual, still waiting…");
+    }
+  }
+  function loop() { draw(); clock(); if (!left) setTimeout(loop, reduced ? 5000 : 1000 / 12); }
+
+  resize(); buildSkyline();
+  addEventListener("resize", () => { resize(); buildSkyline(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", repaint);
+  loop();
+  wake();
+})();
+</script>
+</body>
+</html>
