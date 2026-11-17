@@ -1,4 +1,4 @@
-# Eval — 2026-11-17 07:31 UTC
+# Eval — 2026-11-17 07:53 UTC
 
 103 questions: 93 answerable, 10 unanswerable.
 
@@ -14,7 +14,7 @@
 | document recall@5 | 99% |
 | page recall@3, text-layer pages (n=56) | 98% |
 | page recall@3, scanned pages (n=37) | 100% |
-| retrieval time, mean | 181 ms |
+| retrieval time, mean | 300 ms |
 
 ## By question kind
 

@@ -1,4 +1,4 @@
-# Eval — 2026-11-17 07:24 UTC
+# Eval — 2026-11-17 08:00 UTC
 
 103 questions: 93 answerable, 10 unanswerable.
 
@@ -6,15 +6,15 @@
 
 | Metric | Value |
 |---|---|
-| page recall@1 | 82% |
-| document recall@1 | 90% |
-| page recall@3 | 96% |
+| page recall@1 | 87% |
+| document recall@1 | 94% |
+| page recall@3 | 99% |
 | document recall@3 | 99% |
 | page recall@5 | 99% |
 | document recall@5 | 99% |
-| page recall@3, text-layer pages (n=56) | 95% |
-| page recall@3, scanned pages (n=37) | 97% |
-| retrieval time, mean | 262 ms |
+| page recall@3, text-layer pages (n=56) | 98% |
+| page recall@3, scanned pages (n=37) | 100% |
+| retrieval time, mean | 314 ms |
 
 ## Answers
 
@@ -27,10 +27,10 @@
 | false refusals (answerable) | 1% |
 | answers with at least one citation | 100% |
 | answers citing a gold page | 100% |
-| model latency, mean / p90 | 3018 / 4036 ms |
-| cost per question, mean | $0.0145 |
-| cost of the whole run | $1.50 |
-| input tokens per question, mean | 3221 |
+| model latency, mean / p90 | 3113 / 4278 ms |
+| cost per question, mean | $0.0144 |
+| cost of the whole run | $1.49 |
+| input tokens per question, mean | 3228 |
 | model | claude-opus-5-5 |
 
 ## By question kind
@@ -43,7 +43,7 @@
 | due_date | 8 | 100% | 100% |
 | iban | 3 | 100% | 100% |
 | po_ref | 6 | 100% | 100% |
-| qty | 8 | 62% | 100% |
+| qty | 8 | 100% | 100% |
 | shipping | 4 | 100% | 100% |
 | tax | 3 | 100% | 100% |
 | terms | 5 | 100% | 100% |

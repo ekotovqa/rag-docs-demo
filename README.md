@@ -36,7 +36,7 @@ answer is among the top-k pages (full report: [`data/eval/latest-retrieval.md`](
 | document recall@1 | 94% |
 | page recall@3, text-layer pages (n=56) | 98% |
 | page recall@3, scanned pages (n=37) | 100% |
-| retrieval time, mean (embed + SQL) | 180 ms |
+| retrieval time, mean (embed + SQL) | 180 ms on local Postgres, 300 ms on Neon from a laptop |
 
 Answers, the same questions through Claude Opus 5.5 with the top-6 chunks (full report:
 [`data/eval/latest-full.md`](data/eval/latest-full.md)). An answer is correct when it holds
@@ -51,8 +51,8 @@ in the corpus.
 | correct refusals, 10 unanswerable questions | 100% |
 | false refusals | 1% |
 | answers with a citation on the gold page | 100% |
-| model latency, mean / p90 | 3.0 s / 4.0 s |
-| cost per question / whole run | $0.015 / $1.50 |
+| model latency, mean / p90 | 3.1 s / 4.3 s |
+| cost per question / whole run | $0.014 / $1.49 |
 | input tokens per question, mean | 3 200 |
 
 How the retrieval numbers were reached, in order: 91% → 97% after restoring the spaces
@@ -62,7 +62,7 @@ document-number boost above the ceiling of reciprocal rank fusion. The eval foun
 The question set was then regenerated (see the first bullet below), and on that set the
 ranking went 96% → 99% by counting the identifiers a chunk matches instead of flagging them.
 
-Two full runs so far. The first scored 96% on answers, with four misses, all outside the
+Three full runs so far. The first scored 96% on answers, with four misses, all outside the
 model, and the eval is what exposed them:
 
 - Two questions asked "how many X" about a SKU that sat on three lines of the same order.
@@ -84,9 +84,8 @@ that line into "100mdrum", and no tokenizer turns that back into "100", "m" and 
 model refused rather than guess a vendor, which is the right call. The same run showed that
 the identifier boost was a flag: a chunk naming both the order and the SKU the question
 asked about lost to chunks naming only one of them with a better vector rank. The boost now
-counts identifiers matched. The retrieval table above is measured after that change; the
-answers table is from the run just before it, where those pages were still inside the
-top-6 the model reads.
+counts identifiers matched. The third run, with that change and the index on Neon, scored
+99% again with the same single miss; both tables above are from it.
 
 ## How it works
 
@@ -134,7 +133,7 @@ not hold the answer; the app turns it into "Not in the documents" and the eval c
 docker compose up -d                 # Postgres 17 + pgvector on localhost:54329
 uv sync                              # Python 3.12, uv
 cp .env.example .env                 # ANTHROPIC_API_KEY, DATABASE_URL
-uv run ragdemo ingest                # 40 PDFs -> 99 chunks, 5-7 min (OCR of 20 pages at full resolution)
+uv run ragdemo ingest                # 40 PDFs -> 99 chunks, 4-5 min (OCR of 20 pages at full resolution)
 uv run ragdemo search "What is the total due on invoice AEC-0201?"   # retrieval only
 uv run ragdemo ask "What is the total due on invoice AEC-0201?"      # with the model
 uv run ragdemo eval --retrieval-only # recall@k, no model calls
@@ -174,6 +173,12 @@ az deployment group create -g rg-rag-docs-demo -f infra/main.bicep -p infra/main
 The workflow needs three repository variables (`AZURE_CLIENT_ID` from the deployment's
 `deployClientId` output, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) and the GHCR package set
 to public (or a pull token added to the template, as cycling-coach does).
+
+The Neon string is the direct endpoint, not the pooler: the schema and the `vector`
+extension are created on first start, and one app instance does not need connection
+pooling. The index can be built from a laptop against the cloud database (`ragdemo ingest`
+with the Neon string in `.env`, about 4.5 minutes: OCR runs locally, chunks and vectors go
+over the wire), so the container never has to.
 
 ## Limits, honestly
 
