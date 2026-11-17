@@ -98,9 +98,18 @@ full-text, pgvector отложен. Это демо закрывает вект�
    pgvector 0.8.7, база `ragdemo`, роль `ragdemo`, прямой endpoint без пулера. Строка в `.env` как `DATABASE_URL`,
    локальная строка Docker там же комментарием; в Key Vault уйдёт через `infra/secrets-to-keyvault.ps1 -FromDotEnv`.
 3. ~~Решение о публикации~~ — опубликовано 17.11: https://github.com/ekotovqa/rag-docs-demo (id 1461098450,
-   ветка `master`), id подставлен в `deploySubject`. Дальше Azure в две стадии (README, раздел Deploy):
-   `az login` с MFA, группа `rg-rag-docs-demo`, bicep без приложений, секреты из `.env` в Key Vault,
-   bicep с приложением, три переменные репозитория для workflow, пакет GHCR сделать публичным.
+   ветка `master`), id подставлен в `deploySubject`.
+4. ~~Azure~~ — выкачено 17.11 в две стадии: группа `rg-rag-docs-demo` (germanywestcentral), Key Vault
+   `ragdemo-kv-5frphndbucxwc` с секретами `anthropic-api-key` и `database-url` из `.env`, среда
+   `wittymoss-fb05dd78.francecentral.azurecontainerapps.io`, приложение `ragdemo-app` (образ по sha
+   коммита `245a55b`), deploy-identity clientId `ec93ce2d-83f9-4099-bc0d-90a31f88ff52`, переменные
+   репозитория `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` заданы, пакет GHCR публичный сам по себе.
+   Живой адрес: https://ragdemo-app.wittymoss-fb05dd78.francecentral.azurecontainerapps.io — первый запрос после сна ~75 с
+   (образ 1,5 ГБ + модели), индекс на Neon подхвачен без переиндексации, ответ по AEC-0201 из облака
+   верный, $0.024, модель 5,2 с, retrieval 314 мс.
+
+Осталось по плану: видео 2 мин и карточка Project Catalog «RAG assistant over your documents with
+citations and an eval report»; по желанию — свой домен, как у cycling-coach.
 
 **Замечено, не сделано:**
 
@@ -126,6 +135,8 @@ full-text, pgvector отложен. Это демо закрывает вект�
 - 16.11.2026 — репозиторий создан, решения зафиксированы. Код не начат.
 - 16–17.11.2026, ночь — шаги 1–5 сделаны, 6–7 написаны и проверены без модели, Docker и Azure подготовлены;
   retrieval eval 100% page recall@3; ждёт ключа Anthropic и строки Neon. Подробности выше.
+- 17.11.2026, день — Azure: две стадии bicep, секреты в Key Vault, приложение живое на
+  https://ragdemo-app.wittymoss-fb05dd78.francecentral.azurecontainerapps.io; первый ответ из облака верный.
 - 17.11.2026, день — репозиторий опубликован: https://github.com/ekotovqa/rag-docs-demo; deploy-job
   workflow ждёт переменных Azure, до тех пор пуш в `master` заканчивается образом в GHCR.
 - 17.11.2026, день — Neon: `neonctl`, проект `winter-rice-64326898` во Франкфурте, схема с pgvector,
