@@ -75,6 +75,7 @@ jobs:
 
   deploy:
     needs: image
+    if: vars.AZURE_CLIENT_ID != ''  # until the Azure stage exists, the push stops at the image
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

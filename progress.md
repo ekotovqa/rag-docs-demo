@@ -95,8 +95,7 @@ full-text, pgvector отложен. Это демо закрывает вект�
 2. ~~База Neon для облака~~ — создана 17.11 через `neonctl` (поставлен `npm i -g neonctl`, вход через
    браузер, профиль DEFAULT): проект **rag-docs-demo** `winter-rice-64326898`, организация
    `org-quiet-unit-16778878` (Free), регион `aws-eu-central-1` (Франкфурт), PostgreSQL 17.12,
-   pgvector 0.8.7, база `ragdemo`, роль `ragdemo`, прямой endpoint без пулера
-   (`ep-hidden-hall-b9fktd56.c-7.eu-central-1.aws.neon.tech`). Строка в `.env` как `DATABASE_URL`,
+   pgvector 0.8.7, база `ragdemo`, роль `ragdemo`, прямой endpoint без пулера. Строка в `.env` как `DATABASE_URL`,
    локальная строка Docker там же комментарием; в Key Vault уйдёт через `infra/secrets-to-keyvault.ps1 -FromDotEnv`.
 3. Решение о публикации: `gh repo create ekotovqa/rag-docs-demo --public` + push, затем Azure в две стадии
    (README, раздел Deploy). `infra/main.parameters.json`: подставить id репозитория в `deploySubject`.
