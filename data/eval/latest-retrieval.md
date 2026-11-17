@@ -1,4 +1,4 @@
-# Eval — 2026-11-16 21:07 UTC
+# Eval — 2026-11-17 07:31 UTC
 
 103 questions: 93 answerable, 10 unanswerable.
 
@@ -6,21 +6,21 @@
 
 | Metric | Value |
 |---|---|
-| page recall@1 | 90% |
-| document recall@1 | 97% |
-| page recall@3 | 100% |
-| document recall@3 | 100% |
-| page recall@5 | 100% |
-| document recall@5 | 100% |
-| page recall@3, text-layer pages (n=55) | 100% |
-| page recall@3, scanned pages (n=38) | 100% |
-| retrieval time, mean | 120 ms |
+| page recall@1 | 87% |
+| document recall@1 | 94% |
+| page recall@3 | 99% |
+| document recall@3 | 99% |
+| page recall@5 | 99% |
+| document recall@5 | 99% |
+| page recall@3, text-layer pages (n=56) | 98% |
+| page recall@3, scanned pages (n=37) | 100% |
+| retrieval time, mean | 181 ms |
 
 ## By question kind
 
 | Kind | n | page recall@3 | accuracy |
 |---|---|---|---|
-| cross_vendor | 4 | 100% | - |
+| cross_vendor | 4 | 75% | - |
 | delivery_date | 4 | 100% | - |
 | doc_date | 5 | 100% | - |
 | due_date | 8 | 100% | - |
