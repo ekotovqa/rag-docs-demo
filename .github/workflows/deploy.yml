@@ -2,7 +2,7 @@ name: deploy
 
 # A push to master is a rollout: the tests, the image, the app, a look at /api/health.
 # Documentation changes nothing the server runs, so it starts nothing.
-# Started by hand on another branch, it runs the tests only.
+# Started by hand on master, it rolls the same code out again; on another branch, it runs the tests only.
 on:
   push:
     branches: [master]
@@ -48,7 +48,7 @@ jobs:
 
   image:
     needs: tests
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
