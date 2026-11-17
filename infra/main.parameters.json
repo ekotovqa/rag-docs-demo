@@ -5,7 +5,7 @@
     "namePrefix": { "value": "ragdemo" },
     "location": { "value": "germanywestcentral" },
     "appsLocation": { "value": "francecentral" },
-    "deploySubject": { "value": "repo:ekotovqa@72621327/rag-docs-demo@REPO_ID:ref:refs/heads/master" },
+    "deploySubject": { "value": "repo:ekotovqa@72621327/rag-docs-demo@1461098450:ref:refs/heads/master" },
     "dailyBudgetUsd": { "value": "2" },
     "rateLimitPerMinute": { "value": "10" }
   }

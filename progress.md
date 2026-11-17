@@ -97,8 +97,10 @@ full-text, pgvector отложен. Это демо закрывает вект�
    `org-quiet-unit-16778878` (Free), регион `aws-eu-central-1` (Франкфурт), PostgreSQL 17.12,
    pgvector 0.8.7, база `ragdemo`, роль `ragdemo`, прямой endpoint без пулера. Строка в `.env` как `DATABASE_URL`,
    локальная строка Docker там же комментарием; в Key Vault уйдёт через `infra/secrets-to-keyvault.ps1 -FromDotEnv`.
-3. Решение о публикации: `gh repo create ekotovqa/rag-docs-demo --public` + push, затем Azure в две стадии
-   (README, раздел Deploy). `infra/main.parameters.json`: подставить id репозитория в `deploySubject`.
+3. ~~Решение о публикации~~ — опубликовано 17.11: https://github.com/ekotovqa/rag-docs-demo (id 1461098450,
+   ветка `master`), id подставлен в `deploySubject`. Дальше Azure в две стадии (README, раздел Deploy):
+   `az login` с MFA, группа `rg-rag-docs-demo`, bicep без приложений, секреты из `.env` в Key Vault,
+   bicep с приложением, три переменные репозитория для workflow, пакет GHCR сделать публичным.
 
 **Замечено, не сделано:**
 
@@ -124,6 +126,8 @@ full-text, pgvector отложен. Это демо закрывает вект�
 - 16.11.2026 — репозиторий создан, решения зафиксированы. Код не начат.
 - 16–17.11.2026, ночь — шаги 1–5 сделаны, 6–7 написаны и проверены без модели, Docker и Azure подготовлены;
   retrieval eval 100% page recall@3; ждёт ключа Anthropic и строки Neon. Подробности выше.
+- 17.11.2026, день — репозиторий опубликован: https://github.com/ekotovqa/rag-docs-demo; deploy-job
+  workflow ждёт переменных Azure, до тех пор пуш в `master` заканчивается образом в GHCR.
 - 17.11.2026, день — Neon: `neonctl`, проект `winter-rice-64326898` во Франкфурте, схема с pgvector,
   индекс построен с локальной машины за 4,4 мин (OCR здесь, в базу уходят чанки и векторы); третий
   полный eval с Neon — 99%, $1.49, обе таблицы README с него. Всего на eval потрачено $4.51.
