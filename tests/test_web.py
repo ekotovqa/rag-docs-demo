@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -31,7 +32,8 @@ class FakeAnswerer:
 def client(monkeypatch):
     st = web.State()
     st.store, st.answerer, st.ready = FakeStore(), FakeAnswerer(), True
-    st.budget = web.Budget(per_minute=3, daily_usd=0.025)
+    st.guard = web.Guard(web.Limits(per_minute=3, per_visitor_day=10, global_per_minute=100, max_inflight=2,
+                                    daily_usd=0.025, monthly_usd=1.0))
     monkeypatch.setattr(web, "state", st)
     with TestClient(web.create_app(boot=False)) as c:
         yield c, st
@@ -53,6 +55,7 @@ def test_ask_returns_answer_citations_hits_and_budget(client):
     assert j["citations"][0] == {"n": 1, "file": "A.pdf", "page": 2, "quote": "TOTAL DUE 1,440.00 USD", "chunk_id": 1}
     assert j["hits"][0]["file"] == "A.pdf" and j["hits"][0]["lex_score"] == 3.4
     assert j["cost_usd"] == 0.01 and j["spent_today_usd"] == 0.01 and j["daily_budget_usd"] == 0.025
+    assert j["questions_left_today"] == 9 and j["questions_per_visitor_day"] == 10
     assert st.answerer.questions == [("What is the total due on invoice A?", None)]
 
 
@@ -100,13 +103,110 @@ def test_rate_limit_and_daily_budget(client):
     assert "budget" in c.post("/api/ask", json={"question": "one more"}).json()["detail"]
 
 
+def limits(**over):
+    base = dict(per_minute=100, per_visitor_day=100, global_per_minute=1000, max_inflight=100, daily_usd=100, monthly_usd=1000)
+    base.update(over)
+    return web.Limits(**base)
+
+
 def test_rate_limit_per_minute():
-    b = web.Budget(per_minute=2, daily_usd=100)
-    b.check("1.1.1.1"); b.check("1.1.1.1")
+    g = web.Guard(limits(per_minute=2))
+    g.admit("1.1.1.1"); g.admit("1.1.1.1")
     with pytest.raises(web.HTTPException) as exc:
-        b.check("1.1.1.1")
+        g.admit("1.1.1.1")
     assert exc.value.status_code == 429 and "per minute" in exc.value.detail
-    b.check("2.2.2.2")  # another client is not affected
+    assert exc.value.headers["Retry-After"] == "60"
+    g.admit("2.2.2.2")  # another client is not affected
+
+
+def test_visitor_daily_quota_is_the_demo_mode(client):
+    """A visitor gets a few questions a day; the count is per client address, refusals do not burn it."""
+    c, st = client
+    st.guard = web.Guard(limits(per_visitor_day=2))
+    web.state.guard = st.guard
+    first = c.post("/api/ask", json={"question": "first question"}).json()
+    second = c.post("/api/ask", json={"question": "second question"}).json()
+    assert (first["questions_left_today"], second["questions_left_today"]) == (1, 0)
+    third = c.post("/api/ask", json={"question": "third question"})
+    assert third.status_code == 429 and "questions a day" in third.json()["detail"]
+    assert "Retry-After" not in third.headers
+    # the ingress puts the real client last in X-Forwarded-For; a spoofed first entry changes nothing
+    spoof = c.post("/api/ask", json={"question": "fourth question"}, headers={"X-Forwarded-For": "9.9.9.9, testclient"})
+    assert spoof.status_code == 429
+    other = c.post("/api/ask", json={"question": "fifth question"}, headers={"X-Forwarded-For": "203.0.113.7"})
+    assert other.status_code == 200 and other.json()["questions_left_today"] == 1
+
+
+def test_everyone_together_is_limited_too():
+    g = web.Guard(limits(global_per_minute=3))
+    for ip in ("1.1.1.1", "2.2.2.2", "3.3.3.3"):
+        g.admit(ip)
+    with pytest.raises(web.HTTPException) as exc:
+        g.admit("4.4.4.4")
+    assert exc.value.status_code == 429 and "busy" in exc.value.detail
+
+
+def test_questions_in_flight_are_capped():
+    g = web.Guard(limits(max_inflight=2))
+    g.admit("1.1.1.1"); g.admit("2.2.2.2")
+    with pytest.raises(web.HTTPException) as exc:
+        g.admit("3.3.3.3")
+    assert exc.value.status_code == 503 and exc.value.headers["Retry-After"] == "5"
+    g.release(0.01)
+    g.admit("3.3.3.3")  # a slot came free
+
+
+def test_spend_survives_a_restart_and_the_month_has_a_ceiling():
+    ledger = web.MemoryLedger()
+    g = web.Guard(limits(daily_usd=0.05, monthly_usd=0.08), ledger)
+    for _ in range(3):
+        g.admit("1.1.1.1"); g.release(0.02)
+    assert g.today_usd == pytest.approx(0.06)
+    with pytest.raises(web.HTTPException) as exc:
+        g.admit("1.1.1.1")
+    assert "daily budget" in exc.value.detail
+    restarted = web.Guard(limits(daily_usd=0.05, monthly_usd=0.08), ledger)  # a cold start: memory is gone
+    with pytest.raises(web.HTTPException):
+        restarted.admit("1.1.1.1")  # ...but the ledger is not
+    assert restarted.today_usd == pytest.approx(0.06)
+    # a new day within the same month: the daily ceiling resets, the monthly one does not
+    tomorrow = web.Guard(limits(daily_usd=0.05, monthly_usd=0.08), ledger, clock=lambda: time.time() + 86400)
+    tomorrow.admit("1.1.1.1"); tomorrow.release(0.02)
+    assert tomorrow.today_usd == pytest.approx(0.02) and tomorrow.month_usd == pytest.approx(0.08)
+    with pytest.raises(web.HTTPException) as exc:
+        tomorrow.admit("1.1.1.1")
+    assert "monthly budget" in exc.value.detail
+
+
+def test_visitor_quota_resets_with_the_day():
+    now = [time.time()]
+    g = web.Guard(limits(per_visitor_day=1), clock=lambda: now[0])
+    g.admit("1.1.1.1"); g.release(None)
+    with pytest.raises(web.HTTPException):
+        g.admit("1.1.1.1")
+    now[0] += 86400
+    g.admit("1.1.1.1")
+
+
+def test_ledger_failure_does_not_open_the_gate():
+    class Broken:
+        def spend_load(self, day):
+            raise RuntimeError("db down")
+
+        def spend_add(self, day, usd):
+            raise RuntimeError("db down")
+
+    g = web.Guard(limits(daily_usd=0.03), Broken())
+    g.admit("1.1.1.1"); g.release(0.02)
+    g.admit("1.1.1.1"); g.release(0.02)
+    with pytest.raises(web.HTTPException):
+        g.admit("1.1.1.1")  # the in-memory total still counts
+
+
+def test_oversized_bodies_are_refused_before_parsing(client):
+    c, _ = client
+    r = c.post("/api/ask", content=b'{"question": "' + b"x" * 5000 + b'"}', headers={"content-type": "application/json"})
+    assert r.status_code == 413 and "4096" in r.json()["detail"]
 
 
 def test_not_ready_and_failed_startup(monkeypatch):

@@ -65,6 +65,11 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING GIN (tsv);
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS chunks_file_page_idx ON chunks (file, page, idx);
+CREATE TABLE IF NOT EXISTS spend (
+    day       date PRIMARY KEY,
+    usd       numeric(12, 6) NOT NULL DEFAULT 0,
+    questions int NOT NULL DEFAULT 0
+);
 """
 
 SEARCH_SQL = """
@@ -117,6 +122,27 @@ class Store:
     def init_schema(self) -> None:
         with psycopg.connect(self.dsn, row_factory=dict_row) as conn:  # no adapter yet: the type may not exist
             conn.execute(SCHEMA.format(dim=self.dim))
+            conn.commit()
+
+    # --- Spend ledger: the demo's money ceilings must survive a cold start ---
+
+    def spend_load(self, day: str) -> tuple[float, float]:
+        """(spent on `day`, spent in the month of `day`), USD. `day` is YYYY-MM-DD."""
+        with self.connect() as conn:
+            today = conn.execute("SELECT usd FROM spend WHERE day = %s::date", (day,)).fetchone()
+            month = conn.execute(
+                "SELECT COALESCE(SUM(usd), 0) AS usd FROM spend WHERE date_trunc('month', day) = date_trunc('month', %s::date)",
+                (day,),
+            ).fetchone()
+        return (float(today["usd"]) if today else 0.0), float(month["usd"])
+
+    def spend_add(self, day: str, usd: float) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO spend (day, usd, questions) VALUES (%s::date, %s, 1) "
+                "ON CONFLICT (day) DO UPDATE SET usd = spend.usd + EXCLUDED.usd, questions = spend.questions + 1",
+                (day, usd),
+            )
             conn.commit()
 
     def document_state(self) -> dict[str, str]:

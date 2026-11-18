@@ -28,8 +28,14 @@ param deploySubject string
 @description('Spend ceiling of the public demo per day, in USD; the app refuses questions above it.')
 param dailyBudgetUsd string = '2'
 
-@description('Questions per minute one client may ask.')
-param rateLimitPerMinute string = '10'
+@description('Questions per minute one visitor may ask.')
+param rateLimitPerMinute string = '5'
+
+@description('Questions per day one visitor (client IP) may ask: a few to see how the demo works.')
+param visitorDailyQuestions string = '5'
+
+@description('Spend ceiling of the public demo per month, in USD; the app refuses questions above it.')
+param monthlyBudgetUsd string = '15'
 
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var kvName = '${namePrefix}-kv-${take(uniqueSuffix, 24 - length(namePrefix) - 4)}'
@@ -144,7 +150,9 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = if (deployApps) {
             { name: 'DATABASE_URL', secretRef: 'database-url' }
             { name: 'RAGDEMO_AUTO_INGEST', value: 'true' }
             { name: 'RAGDEMO_DAILY_BUDGET_USD', value: dailyBudgetUsd }
+            { name: 'RAGDEMO_MONTHLY_BUDGET_USD', value: monthlyBudgetUsd }
             { name: 'RAGDEMO_RATE_LIMIT_PER_MINUTE', value: rateLimitPerMinute }
+            { name: 'RAGDEMO_VISITOR_DAILY_QUESTIONS', value: visitorDailyQuestions }
             { name: 'PORT', value: '8000' }
           ]
           probes: [

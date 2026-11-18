@@ -74,7 +74,8 @@
   <div class="panel" id="docsPanel" hidden><div id="docsBody"></div></div>
 
   <footer>The corpus is synthetic: generated documents with a known ground truth, no real company data.
-    Answers are limited to what the documents say; when they do not say it, the demo says so.</footer>
+    Answers are limited to what the documents say; when they do not say it, the demo says so.
+    Demo mode: every visitor gets a few questions a day; the answer panel shows how many are left.</footer>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -131,6 +132,7 @@ async function ask() {
         `${j.input_tokens} in / ${j.output_tokens} out tokens` + (j.cache_read_tokens ? ` (${j.cache_read_tokens} cached)` : ""),
         cost,
         `spent today $${j.spent_today_usd} of $${j.daily_budget_usd}`,
+        `${j.questions_left_today} of ${j.questions_per_visitor_day} questions left for you today`,
       ].map((s) => `<span>${s}</span>`).join("");
     }
     $("retrieved").open = !!j.error;

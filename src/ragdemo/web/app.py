@@ -5,8 +5,6 @@ import json
 import logging
 import os
 import threading
-import time
-from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -17,49 +15,21 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel, Field
 
 from ..config import settings
+from .guard import BodyLimit, Guard, Limits, MemoryLedger, client_ip, limits_from_env
+
+__all__ = ["app", "create_app", "state", "State", "Guard", "Limits", "MemoryLedger", "HTTPException"]
 
 log = logging.getLogger("ragdemo.web")
 STATIC = Path(__file__).parent / "static"
 
 MAX_QUESTION_CHARS = 300
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("RAGDEMO_RATE_LIMIT_PER_MINUTE", "10"))
-DAILY_BUDGET_USD = float(os.environ.get("RAGDEMO_DAILY_BUDGET_USD", "2.0"))
+MAX_BODY_BYTES = 4096  # a question is 300 characters; anything larger is not a question
 AUTO_INGEST = os.environ.get("RAGDEMO_AUTO_INGEST", "").lower() in ("1", "true", "yes")
 
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=MAX_QUESTION_CHARS)
-    k: int | None = Field(default=None, ge=1, le=12)
-
-
-class Budget:
-    """In-memory spend guard for a public demo: per-IP rate limit and a daily cost ceiling."""
-
-    def __init__(self, per_minute: int, daily_usd: float) -> None:
-        self.per_minute, self.daily_usd = per_minute, daily_usd
-        self.spent_usd = 0.0
-        self.day = time.strftime("%Y-%m-%d")
-        self.calls: dict[str, deque[float]] = defaultdict(deque)
-        self.lock = threading.Lock()
-
-    def check(self, ip: str) -> None:
-        with self.lock:
-            today = time.strftime("%Y-%m-%d")
-            if today != self.day:
-                self.day, self.spent_usd = today, 0.0
-            if self.spent_usd >= self.daily_usd:
-                raise HTTPException(429, "The demo's daily budget is used up; try again tomorrow.")
-            now = time.monotonic()
-            q = self.calls[ip]
-            while q and now - q[0] > 60:
-                q.popleft()
-            if len(q) >= self.per_minute:
-                raise HTTPException(429, f"At most {self.per_minute} questions per minute, please.")
-            q.append(now)
-
-    def add(self, cost: float | None) -> None:
-        with self.lock:
-            self.spent_usd += cost or 0.0
+    k: int | None = Field(default=None, ge=1, le=8)  # more chunks cost more; the page never asks for them
 
 
 class State:
@@ -67,7 +37,7 @@ class State:
         self.store = None
         self.retriever = None
         self.answerer = None
-        self.budget = Budget(RATE_LIMIT_PER_MINUTE, DAILY_BUDGET_USD)
+        self.guard = Guard(limits_from_env())
         self.ready = False
         self.error: str | None = None
 
@@ -80,6 +50,7 @@ class State:
         s = settings()
         self.store = Store(s.database_url)
         self.store.init_schema()
+        self.guard.attach(self.store)  # today's and this month's spend come from the database, not from memory
         embedder = Embedder(s.ragdemo_embed_model, s.ragdemo_model_cache)
         self.retriever = Retriever(self.store, embedder, s.ragdemo_top_k)
         self.answerer = Answerer(self.retriever)
@@ -126,7 +97,8 @@ def index() -> str:
 
 @router.get("/api/health")
 def health() -> JSONResponse:
-    body: dict[str, Any] = {"status": "error" if state.error else ("ok" if state.ready else "starting"), "error": state.error}
+    body: dict[str, Any] = {"status": "error" if state.error else ("ok" if state.ready else "starting"), "error": state.error,
+                            "questions_per_visitor_day": state.guard.limits.per_visitor_day}
     if state.ready and state.store is not None:
         body.update(state.store.stats())
     return JSONResponse(body, status_code=200 if not state.error else 503)
@@ -174,21 +146,27 @@ def pdf(name: str) -> FileResponse:
 @router.post("/api/ask")
 def ask(req: AskRequest, request: Request) -> dict[str, Any]:
     st = require_ready()
-    ip = request.client.host if request.client else "?"
-    st.budget.check(ip)
-    question = req.question.strip()
+    ip = client_ip(request)
+    st.guard.admit(ip)  # 429 / 503 with the reason when the visitor, the demo or the budget is at its limit
+    cost: float | None = None
     try:
-        answer = st.answerer.ask(question, k=req.k)
-    except RuntimeError as exc:
-        # No model (no key): retrieval still works, and the page shows what would have gone to the model.
-        retrieval = st.retriever.search(question, k=req.k)
-        out = retrieval_only_payload(question, retrieval, str(exc))
-    else:
-        st.budget.add(answer.cost_usd)
-        out = answer.to_dict()
-        out["error"] = None
-    out["spent_today_usd"] = round(st.budget.spent_usd, 4)
-    out["daily_budget_usd"] = st.budget.daily_usd
+        question = req.question.strip()
+        try:
+            answer = st.answerer.ask(question, k=req.k)
+        except RuntimeError as exc:
+            # No model (no key): retrieval still works, and the page shows what would have gone to the model.
+            retrieval = st.retriever.search(question, k=req.k)
+            out = retrieval_only_payload(question, retrieval, str(exc))
+        else:
+            cost = answer.cost_usd
+            out = answer.to_dict()
+            out["error"] = None
+    finally:
+        st.guard.release(cost)
+    out["spent_today_usd"] = round(st.guard.today_usd, 4)
+    out["daily_budget_usd"] = st.guard.limits.daily_usd
+    out["questions_left_today"] = st.guard.left_today(ip)
+    out["questions_per_visitor_day"] = st.guard.limits.per_visitor_day
     return out
 
 
@@ -211,6 +189,7 @@ def create_app(boot: bool = True) -> FastAPI:
     application.add_middleware(CORSMiddleware, allow_origins=origins,
                                allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
                                allow_methods=["GET"], max_age=600)
+    application.add_middleware(BodyLimit, max_bytes=MAX_BODY_BYTES)
     application.include_router(router)
     return application
 
