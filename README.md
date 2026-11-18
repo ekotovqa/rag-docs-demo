@@ -25,8 +25,9 @@ Built to show how I approach RAG for production, not as a tutorial:
 - **Eval set with exact answers**: 103 golden questions derived from the corpus ground truth,
   retrieval recall@k, answer accuracy, refusal behaviour, cost and latency. No model grades
   another model.
-- **Cost and latency of every request** shown next to the answer; a daily spend ceiling and a
-  per-client rate limit protect the public demo.
+- **Cost and latency of every request** shown next to the answer. The public demo is guarded:
+  a few questions per visitor a day, limits for everyone together, daily and monthly spend
+  ceilings kept in Postgres, and an Azure budget that stops the app.
 
 Stack: Python 3.12, FastAPI, Anthropic SDK (Claude Opus 5.5), fastembed, RapidOCR,
 pypdfium2, Postgres 17 + pgvector (Neon in the cloud), Azure Container Apps (scale to zero).
@@ -193,6 +194,22 @@ copies, reads only) and hands the question over as `?q=`. To try it locally:
 `python -m http.server 8765` inside `docs`, then `http://127.0.0.1:8765/?app=http://127.0.0.1:8000`
 against `ragdemo serve`.
 
+**Guard rails.** The link is meant for advertising, so a visitor gets a look, not an open
+endpoint. The app refuses, with `Retry-After` and a logged address: more than 5 questions per
+visitor (client address) a day or 5 a minute, more than 30 a minute for everyone, more than 2
+in flight, anything once $2 a day or $15 a month is spent, and bodies above 4 KB
+([`web/guard.py`](src/ragdemo/web/guard.py)). The spend totals live in the `spend` table, so
+a cold start does not reset them. Around the app, [`infra/guard.bicep`](infra/guard.bicep)
+deploys two metric alerts (a burst of requests; a replica awake for 6 hours) and a €5 monthly
+budget on the resource group that e-mails at 80% and, at 100% of actual spend, stops the app
+through a Logic App whose identity can do only that. The e-mails are passed at deploy time,
+not stored here. A stopped app answers 404 at the ingress and comes back with
+`az containerapp start -n ragdemo-app -g rg-rag-docs-demo` (an older CLI without `start`:
+`az rest --method post --uri "https://management.azure.com<app id>/start?api-version=2025-01-01"`).
+The cutoff was fired by hand once on 18 Nov 2026: stop in 20 s, back to healthy about two
+minutes after the start call. The backstop outside Azure is the spend limit of the Anthropic
+workspace that owns the key.
+
 The Neon string is the direct endpoint, not the pooler: the schema and the `vector`
 extension are created on first start, and one app instance does not need connection
 pooling. The index can be built from a laptop against the cloud database (`ragdemo ingest`
@@ -211,6 +228,7 @@ over the wire), so the container never has to.
   case the eval found, a second detection pass at another scale would make it robust.
 - The system prompt is short, below the model's minimum cacheable prefix, so prompt caching
   does not kick in here; the page shows cached tokens honestly (zero).
-- The spend guard is in memory: it resets when the app scales to zero. Enough for a demo,
-  not for a product.
+- The visitor quota is per client address: an office behind one NAT shares its 5 questions,
+  and someone with many addresses gets many quotas. The money ceilings and the Azure budget
+  bound the damage; an edge in front of a custom domain (Cloudflare) would be the next layer.
 - The image is 1.5 GB (ONNX Runtime, OpenCV for RapidOCR). A slimmer OCR engine would halve it.
